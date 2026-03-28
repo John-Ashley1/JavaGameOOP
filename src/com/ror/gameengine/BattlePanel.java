@@ -1,390 +1,345 @@
 package com.ror.gameengine;
 
-import com.ror.gamemodel.*;
+import com.ror.gamemodel.Entity;
+import com.ror.gamemodel.Skill;
+import com.ror.gameutil.BattleView;
+import com.ror.gameutil.BattleManager;
+import com.ror.gameutil.HoverButton;
+
 import javax.swing.*;
+import javax.swing.border.Border;
+
 import java.awt.*;
-import java.awt.event.ActionListener;
+import java.awt.event.*;
 
-public class BattlePanel extends JPanel {
-    private GameFrame parent;
-    private JButton backButton;
-    private JTextArea battleLog;
-    private JButton skillBtn1, skillBtn2, skillBtn3, backBtn;
-    private JLabel playerHPLabel, enemyHPLabel, playerNameLabel, enemyNameLabel;
-
-    private Entity player;
-    private Entity enemy;
-    private boolean playerTurn = true;
-
-    private boolean playerShieldActive = false;
-    private int delayedDamageToEnemy = 0;
-    private int lastDamageTakenByPlayer = 0;
-    private String mode = "Tutorial";
+public class BattlePanel extends JPanel implements BattleView {
+    
+    // --- UI Components ---
+    public GameFrame parent;
+    public JTextArea battleLog;
+    public HoverButton skillBtn1, skillBtn2, skillBtn3, backBtn;
+    public JLabel playerHPLabel, enemyHPLabel, playerNameLabel, enemyNameLabel, playerLevelLabel;
+    public JProgressBar playerHPBar, enemyHPBar;
+    
+    // --- Reference to the Controller/Logic Layer
+    private final BattleManager battleManager; 
 
     public BattlePanel(GameFrame parent) {
         this.parent = parent;
         setLayout(new BorderLayout());
         setBackground(Color.BLACK);
 
-        // --- Top: HP and names ---
-        JPanel top = new JPanel(new GridLayout(2, 2));
+        this.battleManager = new BattleManager(this);
+        setupBattleLog();
+    }
+
+    // PUBLIC ENTRY POINT
+    
+    public void startBattle(Entity chosenPlayer) {
+        // 1. Initialize all UI components (buttons, labels, bars) with placeholder values.
+        setupTopPanel();
+        setupBottomPanel(); 
+        
+        // 2. Initialize the Logic (Controller), which sets real player/enemy objects
+        // and calls updateDisplay() and updateSkillButtons().
+        battleManager.startBattle(chosenPlayer);
+        
+        // 3. Attach action listeners
+        setupSkillButtons();
+    }
+
+    private void setupSkillButtons() {
+        // We need a defensive check here too, in case setupBottomPanel fails silently.
+        if (skillBtn1 == null || skillBtn2 == null || skillBtn3 == null) {
+            System.err.println("Warning: Cannot set up skill listeners. Buttons are null.");
+            return;
+        }
+
+        clearSkillListeners(); 
+        
+        // DELEGATE: All button clicks go straight to the initialized manager
+        skillBtn1.addActionListener(e -> battleManager.processPlayerAction(0));
+        skillBtn2.addActionListener(e -> battleManager.processPlayerAction(1));
+        skillBtn3.addActionListener(e -> battleManager.processPlayerAction(2));
+        
+        updateSkillButtons();
+    }
+
+    private void clearSkillListeners() {
+        // Utility method to remove old listeners before adding new ones
+        if (skillBtn1 != null) for (ActionListener al : skillBtn1.getActionListeners()) skillBtn1.removeActionListener(al);
+        if (skillBtn2 != null) for (ActionListener al : skillBtn2.getActionListeners()) skillBtn2.removeActionListener(al);
+        if (skillBtn3 != null) for (ActionListener al : skillBtn3.getActionListeners()) skillBtn3.removeActionListener(al);
+    }
+    
+    private void handleBackClick() {
+        // DELEGATE: Manager handles the consequence of backing out
+        battleManager.confirmBackToMenu();
+    }
+    
+    // BATTLEVIEW IMPLEMENTATION (UI Rendering Methods)
+    
+    @Override
+    public void logMessage(String msg) {
+        Font logFont = new Font("Courier New", Font.PLAIN, 16); 
+        battleLog.setFont(logFont);
+        battleLog.append(msg + "\n\n");
+        battleLog.setCaretPosition(battleLog.getDocument().getLength());
+    }
+
+    @Override
+    public void updateDisplay() {
+        Entity player = battleManager.getPlayer();
+        Entity enemy = battleManager.getEnemy();
+        
+        if (player == null || enemy == null) return;
+
+        // Player UI Update
+        playerNameLabel.setText(player.getName()); // Set actual name
+        playerHPBar.setMaximum(player.getMaxHealth());
+        playerHPBar.setValue(player.getCurrentHealth());
+        double playerHpPercent = (double) player.getCurrentHealth() / player.getMaxHealth();
+        playerHPBar.setForeground(playerHpPercent <= 0.3 ? Color.RED : Color.GREEN);
+        playerHPBar.setString("HP: " + player.getCurrentHealth() + "/" + player.getMaxHealth());
+        playerLevelLabel.setText("Level: " + player.getLevel());
+
+        // Enemy UI Update
+        enemyNameLabel.setText(enemy.getName()); // Set actual name
+        enemyHPBar.setMaximum(enemy.getMaxHealth());
+        enemyHPBar.setValue(enemy.getCurrentHealth());
+        double enemyHpPercent = (double) enemy.getCurrentHealth() / enemy.getMaxHealth();
+        enemyHPBar.setForeground(enemyHpPercent <= 0.3 ? Color.RED : Color.GREEN);
+        enemyHPLabel.setText("HP: " + enemy.getCurrentHealth() + "/" + enemy.getMaxHealth());
+    }
+    
+    @Override
+    public void updateSkillButtons() {
+        Entity player = battleManager.getPlayer();
+        if (player == null) return;
+        
+        // --- CRITICAL DEFENSIVE CHECK (Line 114 is near here) ---
+        // If skillBtn1 is null, the buttons have not been initialized by setupBottomPanel().
+        if (skillBtn1 == null) {
+            // We exit gracefully instead of crashing.
+            System.err.println("ERROR: Cannot update skill buttons; UI components are not yet initialized.");
+            return;
+        }
+        // --- END CRITICAL DEFENSIVE CHECK ---
+        
+        // Uses battleManager.getPlayer() safely, since the data is initialized in startBattle now.
+        Skill[] skills = battleManager.getPlayer().getSkills().toArray(new Skill[0]);
+        
+        // Update button text with cooldowns
+        if (skills.length > 0)
+            skillBtn1.setText(skills[0].getName() + (skills[0].isOnCooldown() ? " (CD: " + skills[0].getCurrentCooldown() + ")" : ""));
+        if (skills.length > 1)
+            skillBtn2.setText(skills[1].getName() + (skills[1].isOnCooldown() ? " (CD: " + skills[1].getCurrentCooldown() + ")" : ""));
+        if (skills.length > 2)
+            skillBtn3.setText(skills[2].getName() + (skills[2].isOnCooldown() ? " (CD: " + skills[2].getCurrentCooldown() + ")" : ""));
+
+        // Update enable state based on logic from manager
+        setSkillButtonsEnabled(battleManager.playerTurn); 
+        
+        // Re-disable if on cooldown (prevents clicks while CD > 0)
+        if (skills.length > 0 && skills[0].isOnCooldown()) skillBtn1.setEnabled(false);
+        if (skills.length > 1 && skills[1].isOnCooldown()) skillBtn2.setEnabled(false);
+        if (skills.length > 2 && skills[2].isOnCooldown()) skillBtn3.setEnabled(false);
+    }
+    
+    @Override
+    public void setSkillButtonsEnabled(boolean enabled) {
+        // Defensive check here as well
+        if (skillBtn1 == null) return; 
+
+        skillBtn1.setEnabled(enabled);
+        skillBtn2.setEnabled(enabled);
+        skillBtn3.setEnabled(enabled);
+    }
+
+    @Override
+    public void showProgressionMessage(String title, String message) {
+        JOptionPane.showMessageDialog(this, message, title, JOptionPane.INFORMATION_MESSAGE);
+    }
+    
+    @Override
+    public int showConfirmDialog(String title, String message) {
+        return JOptionPane.showConfirmDialog(this,
+                message,
+                title, JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+    }
+
+    @Override
+    public void transitionToMenu() {
+        parent.showMenu();
+    }
+
+    // UI SETUP METHODS 
+
+    private void setupTopPanel() { 
+        // Use placeholder values for initialization. updateDisplay() will set the real data later.
+
+        JPanel top = new JPanel(new FlowLayout(FlowLayout.CENTER));
         top.setBackground(Color.BLACK);
+        top.setOpaque(true);
 
-        playerNameLabel = new JLabel("Player", SwingConstants.CENTER);
-        enemyNameLabel = new JLabel("Enemy", SwingConstants.CENTER);
-        playerHPLabel = new JLabel("HP: --", SwingConstants.CENTER);
-        enemyHPLabel = new JLabel("HP: --", SwingConstants.CENTER);
+        enemyNameLabel = new JLabel("Enemy", SwingConstants.CENTER); // Placeholder
+        enemyNameLabel.setForeground(Color.WHITE);
+        enemyNameLabel.setFont(new Font("Century Gothic", Font.BOLD, 14));
+        enemyNameLabel.setPreferredSize(new Dimension(150, 30));
 
-        Color white = Color.WHITE;
-        playerNameLabel.setForeground(white);
-        enemyNameLabel.setForeground(white);
-        playerHPLabel.setForeground(white);
-        enemyHPLabel.setForeground(white);
+        enemyHPBar = new JProgressBar(0, 100); // Placeholder max
+        enemyHPBar.setValue(100); // Placeholder current
+        enemyHPBar.setPreferredSize(new Dimension(250, 20));
+        enemyHPBar.setStringPainted(false);
+        enemyHPBar.setForeground(Color.GREEN);
+        enemyHPBar.setBackground(Color.DARK_GRAY);
+        enemyHPBar.setBorder(BorderFactory.createEmptyBorder());
 
-        top.add(playerNameLabel);
-        top.add(enemyNameLabel);
-        top.add(playerHPLabel);
-        top.add(enemyHPLabel);
+        enemyHPLabel = new JLabel("HP: 100/100", SwingConstants.CENTER); // Placeholder text
+        enemyHPLabel.setForeground(Color.WHITE);
+        enemyHPLabel.setFont(new Font("Century Gothic", Font.PLAIN, 12));
+        enemyHPLabel.setPreferredSize(new Dimension(100, 30));
 
+        JPanel enemyStack = new JPanel(new FlowLayout(FlowLayout.CENTER, 15, 5));
+        enemyStack.setBackground(Color.BLACK);
+        enemyStack.add(enemyNameLabel);
+        enemyStack.add(enemyHPBar);
+        enemyStack.add(enemyHPLabel);
+
+        JPanel enemyBox = new JPanel(new BorderLayout());
+        enemyBox.setBackground(Color.BLACK);
+        enemyBox.setOpaque(true);
+        enemyBox.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(Color.WHITE, 2),
+                BorderFactory.createEmptyBorder(8, 12, 8, 12)
+        ));
+        enemyBox.add(enemyStack, BorderLayout.CENTER);
+        enemyBox.setPreferredSize(new Dimension(520, 50));
+
+        top.add(enemyBox);
         add(top, BorderLayout.NORTH);
+    }
 
-        // --- Center: battle log ---
+    private void setupBottomPanel() {
+        // We no longer try to instantiate 'Entity' here. We use placeholders.
+        
+        // CRITICAL: Initialize buttons here!
+        skillBtn1 = new HoverButton("Skill 1");
+        skillBtn2 = new HoverButton("Skill 2");
+        skillBtn3 = new HoverButton("Skill 3");
+        backBtn = new HoverButton("Back");
+
+        JPanel bottom = new JPanel();
+        bottom.setLayout(new BoxLayout(bottom, BoxLayout.Y_AXIS));
+        bottom.setBackground(Color.BLACK);
+        bottom.setOpaque(true);
+
+        // Player Info Labels (Placeholder values)
+        playerNameLabel = new JLabel("Player", SwingConstants.LEFT);
+        playerNameLabel.setForeground(Color.WHITE);
+        playerNameLabel.setFont(new Font("SansSerif", Font.BOLD, 14));
+
+        playerHPLabel = new JLabel("HP: 0/0", SwingConstants.RIGHT); 
+        playerHPLabel.setForeground(Color.WHITE);
+        playerHPLabel.setFont(new Font("SansSerif", Font.PLAIN, 12));
+
+        playerHPBar = new JProgressBar(0, 100); // Placeholder max
+        playerHPBar.setValue(0); // Placeholder current
+        playerHPBar.setPreferredSize(new Dimension(320, 16));
+        playerHPBar.setStringPainted(true);
+        playerHPBar.setForeground(Color.WHITE);
+        playerHPBar.setBackground(Color.DARK_GRAY);
+
+        playerLevelLabel = new JLabel("Lv: 1", SwingConstants.RIGHT);
+        playerLevelLabel.setForeground(Color.WHITE);
+        playerLevelLabel.setFont(new Font("SansSerif", Font.PLAIN, 12));
+
+        JPanel playerInfo = new JPanel(new BorderLayout(8,2));
+        playerInfo.setBackground(Color.BLACK);
+        
+        JPanel leftStack = new JPanel(new GridLayout(1,1));
+        leftStack.setBackground(Color.BLACK);
+        leftStack.add(playerNameLabel);
+
+        JPanel rightStack = new JPanel(new GridLayout(2,1));
+        rightStack.setBackground(Color.BLACK);
+        rightStack.add(playerHPLabel);
+        rightStack.add(playerLevelLabel);
+
+        playerInfo.add(leftStack, BorderLayout.WEST);
+        playerInfo.add(playerHPBar, BorderLayout.CENTER);
+        playerInfo.add(rightStack, BorderLayout.EAST);
+
+        JPanel playerBox = new JPanel(new BorderLayout());
+        playerBox.setBackground(Color.BLACK);
+        playerBox.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(Color.WHITE, 2),
+                BorderFactory.createEmptyBorder(8,12,8,12)
+        ));
+        playerBox.add(playerInfo, BorderLayout.CENTER);
+        playerBox.setMaximumSize(new Dimension(Integer.MAX_VALUE, 64));
+
+        // Buttons row
+        JPanel buttonsPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 24, 8));
+        buttonsPanel.setBackground(Color.BLACK);
+
+        Font btnFont = new Font("SansSerif", Font.PLAIN, 14);
+        skillBtn1.setFont(btnFont);
+        skillBtn2.setFont(btnFont);
+        skillBtn3.setFont(btnFont);
+        backBtn.setFont(btnFont);
+
+        Border btnBorder = BorderFactory.createLineBorder(Color.WHITE, 2);
+        skillBtn1.setBorder(btnBorder);
+        skillBtn2.setBorder(btnBorder);
+        skillBtn3.setBorder(btnBorder);
+        backBtn.setBorder(btnBorder);
+
+        backBtn.addActionListener(e -> handleBackClick()); // Use new delegation method
+
+        buttonsPanel.add(skillBtn1);
+        buttonsPanel.add(skillBtn2);
+        buttonsPanel.add(skillBtn3);
+        buttonsPanel.add(backBtn); 
+
+        bottom.add(Box.createVerticalStrut(8));
+        bottom.add(playerBox);
+        bottom.add(Box.createVerticalStrut(12));
+        bottom.add(buttonsPanel);
+        bottom.add(Box.createVerticalStrut(8));
+
+        add(bottom, BorderLayout.SOUTH);
+    }
+    
+    private void setupBattleLog() {
         battleLog = new JTextArea();
         battleLog.setEditable(false);
         battleLog.setBackground(Color.BLACK);
-        battleLog.setForeground(Color.GREEN);
-        battleLog.setFont(new Font("Monospaced", Font.PLAIN, 13));
-        add(new JScrollPane(battleLog), BorderLayout.CENTER);
+        battleLog.setForeground(Color.WHITE);
+        battleLog.setFont(new Font("Monospaced", Font.PLAIN, 14));
+        battleLog.setLineWrap(true);
+        battleLog.setWrapStyleWord(true);
 
-        // --- Bottom: skill buttons ---
-        JPanel bottom = new JPanel(new GridLayout(1, 4, 8, 8));
-        bottom.setBackground(Color.DARK_GRAY);
+        JScrollPane scrollPane = new JScrollPane(battleLog);
+        scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
 
-        skillBtn1 = new JButton("Skill 1");
-        skillBtn2 = new JButton("Skill 2");
-        skillBtn3 = new JButton("Skill 3");
-        backBtn = new JButton("Back");
-        backBtn.addActionListener(e -> {
-        int confirm = JOptionPane.showConfirmDialog(
-        this,
-        "Are you sure you want to return to the Main Menu?",
-        "Confirm Return",
-        JOptionPane.YES_NO_OPTION
-        );
-        if (confirm == JOptionPane.YES_OPTION) {
-            parent.showMenu();
-        }
-        });
+        scrollPane.setBorder(null);
+        scrollPane.setBackground(Color.BLACK);
+        scrollPane.getViewport().setBackground(Color.BLACK);
+        scrollPane.setViewportBorder(null);
 
-        bottom.add(skillBtn1);
-        bottom.add(skillBtn2);
-        bottom.add(skillBtn3);
-        bottom.add(backBtn);
+        JPanel corner = new JPanel();
+        corner.setBackground(Color.BLACK);
+        corner.setOpaque(true);
+        scrollPane.setCorner(JScrollPane.LOWER_RIGHT_CORNER, corner);
+        scrollPane.setCorner(JScrollPane.UPPER_RIGHT_CORNER, corner);
 
-        add(bottom, BorderLayout.SOUTH);
-        backBtn.setEnabled(false);
-
-    }
-
-    public void startBattle(Entity chosenPlayer) {
-        this.player = chosenPlayer;
-        this.enemy = new Goblin(); // tutorial starts here
-
-        playerShieldActive = false;
-        delayedDamageToEnemy = 0;
-        lastDamageTakenByPlayer = 0;
-        playerTurn = true;
-        mode = "Tutorial";
-
-        playerNameLabel.setText(player.getName());
-        enemyNameLabel.setText(enemy.getName());
-        updateHPLabels();
-
-        Skill[] skills = player.getSkills();
-        skillBtn1.setText(skills[0].getName());
-        skillBtn2.setText(skills[1].getName());
-        skillBtn3.setText(skills[2].getName());
-
-        clearListeners();
-
-        skillBtn1.addActionListener(e -> playerUseSkill(0));
-        skillBtn2.addActionListener(e -> playerUseSkill(1));
-        skillBtn3.addActionListener(e -> playerUseSkill(2));
-
-        battleLog.setText("");
-        log("⚔️ Battle Start! " + player.getName() + " vs " + enemy.getName());
-        log("Choose a skill to begin your turn.");
-    }
-
-    private void clearListeners() {
-        for (ActionListener al : skillBtn1.getActionListeners()) skillBtn1.removeActionListener(al);
-        for (ActionListener al : skillBtn2.getActionListeners()) skillBtn2.removeActionListener(al);
-        for (ActionListener al : skillBtn3.getActionListeners()) skillBtn3.removeActionListener(al);
-    }
-
-    private void playerUseSkill(int index) {
-        if (!playerTurn) return;
-        Skill s = player.getSkills()[index];
-
-        if (s.isOnCooldown()) {
-            log("⏳ " + s.getName() + " is on cooldown for " + s.getCurrentCooldown() + " more turns!");
-            return;
+        JScrollBar vbar = scrollPane.getVerticalScrollBar();
+        if (vbar != null) {
+            vbar.setBackground(Color.BLACK);
+            vbar.setOpaque(true);
         }
 
-        log(player.getName() + " uses " + s.getName() + "!");
-
-        String type = s.getType();
-        switch (type.toLowerCase()) {
-            case "chrono":
-                delayedDamageToEnemy = s.getPower();
-                log("⏳ Chrono Slash — damage will trigger after the enemy’s turn!");
-                break;
-            case "shield":
-                playerShieldActive = true;
-                log("🛡️ Time Shield activated! You’ll block the next attack.");
-                break;
-            case "reverse":
-                int heal = lastDamageTakenByPlayer > 0 ? lastDamageTakenByPlayer : 10;
-                player.setCurrentHealth(Math.min(player.getMaxHealth(), player.getCurrentHealth() + heal));
-                log("♻️ Reverse Flow restores " + heal + " HP!");
-                updateHPLabels();
-                break;
-            default:
-                enemy.takeDamage(s.getPower() + player.getAtk());
-                log("💥 " + enemy.getName() + " takes " + (s.getPower() + player.getAtk()) + " damage!");
-                updateHPLabels();
-                break;
-        }
-
-        // 2. Trigger cooldown only if the skill actually has one
-        if (s.getCooldown() > 0) {
-            s.triggerCooldown();
-        }           
-
-
-        // Reduce cooldowns for other skills
-        for (Skill skill : player.getSkills()) {
-            if (skill != s) skill.reduceCooldown();
-        }
-
-        playerTurn = false;
-
-        Timer timer = new Timer(900, e -> {
-            ((Timer) e.getSource()).stop();
-            enemyTurn();
-        });
-        timer.setRepeats(false);
-        timer.start();
-    }
-
-    private void enemyTurn() {
-    // --- Enemy defeated early (before enemy acts) ---
-    if (!enemy.isAlive()) {
-        handleEnemyDefeat(enemy);
-        return;
-    }
-
-    // --- Enemy’s turn ---
-    if (playerShieldActive) {
-        log("🛡️ The attack is blocked by your Time Shield!");
-        playerShieldActive = false;
-        lastDamageTakenByPlayer = 0;
-    } else {
-        int damage = Math.max(0, enemy.getAtk() - player.getDef());
-        player.setCurrentHealth(player.getCurrentHealth() - damage);
-        lastDamageTakenByPlayer = damage;
-        log("👹 " + enemy.getName() + " attacks! You take " + damage + " damage.");
-        updateHPLabels();
-    }
-
-    // --- Chrono Slash delayed damage ---
-    if (delayedDamageToEnemy > 0 && enemy.isAlive()) {
-        log("💫 Chrono Slash triggers — " + delayedDamageToEnemy + " delayed damage!");
-        enemy.takeDamage(delayedDamageToEnemy);
-        delayedDamageToEnemy = 0;
-        updateHPLabels();
-
-        if (!enemy.isAlive()) {
-            handleEnemyDefeat(enemy);
-            return;
-        }
-    }
-
-    // --- Cooldown reductions ---
-    for (Skill skill : player.getSkills()) {
-        skill.reduceCooldown();
-    }
-
-    // --- End turn check ---
-    if (!player.isAlive()) {
-        log("💀 You were defeated...");
-        disableSkillButtons();
-        return;
-    }
-
-    // --- Player’s next turn ---
-    playerTurn = true;
-    log("Your turn! Choose your next skill.");
-}
-
-    private void handleEnemyDefeat(Entity defeatedEnemy) {
-    log("🏆 You defeated the " + defeatedEnemy.getName() + "!");
-    disableSkillButtons();
-
-    Timer nextBattleTimer = new Timer(700, e -> {
-        ((Timer) e.getSource()).stop();
-
-        if (mode.equals("Tutorial")) {
-            if (defeatedEnemy instanceof Goblin) {
-                JOptionPane.showMessageDialog(this,
-                    "The Goblin collapses, dropping a strange sigil...\n" +
-                    "From the shadows, a hooded Cultist steps forward.",
-                    "Tutorial: Part II", JOptionPane.INFORMATION_MESSAGE);
-
-                enemy = new Cultist();
-                healBetweenBattles();
-                enemyNameLabel.setText(enemy.getName()); // 🟢 Update name
-                log("🔥 A new foe approaches: " + enemy.getName() + "!");
-                updateHPLabels();
-                enableSkillButtons();
-                playerTurn = true;
-                return;
-            }
-
-            if (defeatedEnemy instanceof Cultist) {
-                JOptionPane.showMessageDialog(this,
-                    "The Cultist’s whisper fades: 'He... watches from the Rift...'\n\n" +
-                    "A surge of energy pulls you through — the Realms shift.",
-                    "End of Tutorial", JOptionPane.INFORMATION_MESSAGE);
-
-                mode = "RealDeal";
-                JOptionPane.showMessageDialog(this,
-                    "⚔️ REAL DEAL BEGINS ⚔️\n\n" +
-                    "You awaken beneath stormy skies — Aetheria.\n" +
-                    "A Sky Serpent descends from the clouds!",
-                    "Chapter I: The Rift Opens",
-                    JOptionPane.INFORMATION_MESSAGE);
-
-                enemy = new SkySerpent();
-                healBetweenBattles();
-                enemyNameLabel.setText(enemy.getName());
-                log("🔥 A new foe approaches: " + enemy.getName() + "!");
-                updateHPLabels();
-                enableSkillButtons();
-                playerTurn = true;
-                enableBackButtonForRealDeal();
-                return;
-            }
-        }
-
-        if (mode.equals("RealDeal")) {
-            if (defeatedEnemy instanceof SkySerpent) {
-                JOptionPane.showMessageDialog(this,
-                    "The Sky Serpent bursts into feathers and wind.\n" +
-                    "The air crackles... Molten Imps crawl from the ashes.",
-                    "From Sky to Flame", JOptionPane.INFORMATION_MESSAGE);
-
-                enemy = new MoltenImp();
-                healBetweenBattles();
-                enemyNameLabel.setText(enemy.getName());
-                log("🔥 A new foe approaches: " + enemy.getName() + "!");
-                updateHPLabels();
-                enableSkillButtons();
-                playerTurn = true;
-                return;
-            }
-
-            if (defeatedEnemy instanceof MoltenImp) {
-                JOptionPane.showMessageDialog(this,
-                    "The last Imp explodes in fire.\n" +
-                    "Dark smoke gathers — and from it, a Shadow Creeper forms.",
-                    "Whispers of Noxterra", JOptionPane.INFORMATION_MESSAGE);
-
-                enemy = new ShadowCreeper();
-                healBetweenBattles();
-                enemyNameLabel.setText(enemy.getName());
-                log("🔥 A new foe approaches: " + enemy.getName() + "!");
-                updateHPLabels();
-                enableSkillButtons();
-                playerTurn = true;
-                return;
-            }
-
-            if (defeatedEnemy instanceof ShadowCreeper) {
-                JOptionPane.showMessageDialog(this,
-                    "The Shadow Creeper dissolves into dust...\n" +
-                    "You’ve survived the Real Deal.\n\n🔥 CHAPTER I COMPLETE 🔥",
-                    "Victory!", JOptionPane.INFORMATION_MESSAGE);
-                log("🎉 You won the Real Deal campaign!");
-                return;
-            }
-        }
-    });
-    nextBattleTimer.setRepeats(false);
-    nextBattleTimer.start();
-}
-
-    private void enableBackButtonForRealDeal() {
-    backBtn.setEnabled(true);
-    for (ActionListener al : backBtn.getActionListeners()) backBtn.removeActionListener(al);
-
-    backBtn.addActionListener(e -> {
-        int confirm = JOptionPane.showConfirmDialog(this,
-            "Return to Main Menu? Your current progress will be lost.",
-            "Confirm Exit",
-            JOptionPane.YES_NO_OPTION,
-            JOptionPane.WARNING_MESSAGE);
-
-        if (confirm == JOptionPane.YES_OPTION) {
-            // 🔁 Change this depending on your main game structure
-            // Example if using a card layout in GameFrame:
-            JFrame topFrame = (JFrame) SwingUtilities.getWindowAncestor(this);
-            if (topFrame instanceof GameFrame) {
-                ((GameFrame) topFrame).showMenu();
-            }
-        }
-    });
-}
-
-
-    private void healBetweenBattles() {
-        int healAmount = 60;
-        player.setCurrentHealth(Math.min(player.getMaxHealth(), player.getCurrentHealth() + healAmount));
-        updateHPLabels();
-        log("💖 You recover " + healAmount + " HP before the next battle!");
-    }
-
-    private void updateHPLabels() {
-        playerHPLabel.setText("HP: " + player.getCurrentHealth() + "/" + player.getMaxHealth());
-        enemyHPLabel.setText("HP: " + enemy.getCurrentHealth() + "/" + enemy.getMaxHealth());
-    }
-
-    private void log(String msg) {
-        battleLog.append(msg + "\n");
-    }
-
-    private void checkEnd() {
-        if (!enemy.isAlive()) {
-            disableSkillButtons();
-        } else if (!player.isAlive()) {
-            log("💀 You were defeated...");
-            disableSkillButtons();
-        }
-    }
-
-    private void disableSkillButtons() {
-        skillBtn1.setEnabled(false);
-        skillBtn2.setEnabled(false);
-        skillBtn3.setEnabled(false);
-    }
-
-    private void enableSkillButtons() {
-        skillBtn1.setEnabled(true);
-        skillBtn2.setEnabled(true);
-        skillBtn3.setEnabled(true);
-    }
-
-    public JButton getBackButton() {
-        return backButton;
+        add(scrollPane, BorderLayout.CENTER);
     }
 }

@@ -6,7 +6,28 @@
             "name": "RealmsOfRiftborne",
             "request": "launch",
             "mainClass": "com.ror.gameengine.RealmsOfRiftborne",
-            "projectName": "JavaGameOOP-main_d84d3d56"
+            "projectName": "JavaGameOOP_bd105b8f"
+        },
+        {
+            "type": "java",
+            "name": "RealmsOfRiftborne",
+            "request": "launch",
+            "mainClass": "com.ror.gameengine.RealmsOfRiftborne",
+            "projectName": "JavaGameOOP_f89e22cf"
+        },
+        {
+            "type": "java",
+            "name": "RealmsOfRiftborne",
+            "request": "launch",
+            "mainClass": "com.ror.gameengine.RealmsOfRiftborne",
+            "projectName": "JavaGameOOP_a5934f53"
+        },
+        {
+            "type": "java",
+            "name": "RealmsOfRiftborne",
+            "request": "launch",
+            "mainClass": "com.ror.gameengine.RealmsOfRiftborne",
+            "projectName": "JavaGameOOP_4a8c2692"
         },
         {
             "type": "java",

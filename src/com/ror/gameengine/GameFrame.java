@@ -2,12 +2,13 @@ package com.ror.gameengine;
 
 import javax.swing.*;
 import java.awt.*;
-import com.ror.gamemodel.*;
+import com.ror.gamemodel.Entity;
+import com.ror.gamemodel.WorldManager;
 
 public class GameFrame extends JFrame {
-    private MenuPanel menuPanel;
-    private CharacterSelectPanel selectPanel;
-    private BattlePanel battlePanel;
+    public MenuPanel menuPanel;
+    public CharacterSelectPanel selectPanel;
+    public BattlePanel battlePanel;
 
     public GameFrame() {
         setTitle("Realms of Riftborne");
@@ -30,15 +31,15 @@ public class GameFrame extends JFrame {
     }
 
     public void showMenu() {
-        ((CardLayout) getContentPane().getLayout()).show(getContentPane(), "Menu");
+        ((CardLayout)getContentPane().getLayout()).show(getContentPane(), "Menu");
     }
 
     public void showSelect() {
-        ((CardLayout) getContentPane().getLayout()).show(getContentPane(), "Select");
+        ((CardLayout)getContentPane().getLayout()).show(getContentPane(), "Select");
     }
 
     public void showBattle(Entity chosenCharacter) {
+        battlePanel.startBattle(chosenCharacter); // example first enemy
         ((CardLayout) getContentPane().getLayout()).show(getContentPane(), "Battle");
-        battlePanel.startBattle(chosenCharacter);
     }
 }

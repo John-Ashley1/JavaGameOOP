@@ -1,65 +1,40 @@
 package com.ror.gamemodel;
 
-public class Skill {
-    private String name;
-    private int power;
-    private String type;
-    private int cooldown;
+import com.ror.gameutil.BattleView;
+
+public abstract class Skill {
+    private final String name;
+    private final String description;
+    private final int maxCooldown;
     private int currentCooldown;
 
-    // Constructor for skills with cooldown
-    public Skill(String name, int power, String type, int cooldown) {
+    public Skill(String name, String description, int maxCooldown) {
         this.name = name;
-        this.power = power;
-        this.type = type;
-        this.cooldown = cooldown;
+        this.description = description;
+        this.maxCooldown = maxCooldown;
         this.currentCooldown = 0;
     }
 
-    // Optional shortcut for skills with no cooldown
-    public Skill(String name, int power, String type) {
-        this(name, power, type, 0);
-    }
+    public abstract void apply(Entity user, Entity target, BattleView view);
 
-    public String getName() { return name; }
-    public int getPower() { return power; }
-    public String getType() { return type; }
-    public int getCooldown() { return cooldown; }
-    public int getCurrentCooldown() { return currentCooldown; }
-
-    public boolean isOnCooldown() {
-        return currentCooldown > 0;
-    }
-
+    // --- Cooldown Logic ---
     public void triggerCooldown() {
-        if (cooldown > 0) {
-            currentCooldown = cooldown;
-        }
+        this.currentCooldown = this.maxCooldown;
     }
 
     public void reduceCooldown() {
-        if (currentCooldown > 0) {
-            currentCooldown--;
+        if (this.currentCooldown > 0) {
+            this.currentCooldown--;
         }
     }
 
-    // For logging/testing
-    public void use(Entity user, Entity target) {
-        System.out.println(user.getName() + " uses " + name + " on " + target.getName() + "!");
-
-        if (type.equalsIgnoreCase("Attack")) {
-            int totalDamage = power + user.getAtk();
-            target.takeDamage(totalDamage);
-            System.out.println(target.getName() + " takes " + totalDamage + " damage!");
-        } 
-        else if (type.equalsIgnoreCase("Heal")) {
-            int healed = power;
-            int newHealth = Math.min(user.getMaxHealth(), user.getCurrentHealth() + healed);
-            user.setCurrentHealth(newHealth);
-            System.out.println(user.getName() + " heals for " + healed + " HP (" + newHealth + " total).");
-        } 
-        else {
-            System.out.println("Unknown skill type: " + type);
-        }
+    public void resetCooldown() {
+        this.currentCooldown = 0;
     }
+    
+    // Getters 
+    public String getName() { return name; }
+    public String getDescription() { return description; }
+    public boolean isOnCooldown() { return currentCooldown > 0; }
+    public int getCurrentCooldown() { return currentCooldown; }
 }
